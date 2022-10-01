@@ -94,7 +94,12 @@ def generate_config_items(kb_info_json, config_h_lines):
         except KeyError:
             continue
 
-        if key_type.startswith('array'):
+        if key_type.startswith('array.array'):
+            config_h_lines.append('')
+            config_h_lines.append(f'#ifndef {config_key}')
+            config_h_lines.append(f'#   define {config_key} {{ {", ".join(["{" + ",".join(list(map(str, x))) + "}" for x in config_value])} }}')
+            config_h_lines.append(f'#endif // {config_key}')
+        elif key_type.startswith('array'):
             config_h_lines.append('')
             config_h_lines.append(f'#ifndef {config_key}')
             config_h_lines.append(f'#   define {config_key} {{ {", ".join(map(str, config_value))} }}')
@@ -127,6 +132,36 @@ def generate_config_items(kb_info_json, config_h_lines):
             config_h_lines.append(f'#ifndef {config_key}')
             config_h_lines.append(f'#   define {config_key} {config_value}')
             config_h_lines.append(f'#endif // {config_key}')
+
+
+def generate_encoder_config(encoder_json, config_h_lines, postfix=''):
+    """Generate the config.h lines for encoders."""
+    a_pads = []
+    b_pads = []
+    resolutions = []
+    for encoder in encoder_json.get("rotary", []):
+        a_pads.append(encoder["pin_a"])
+        b_pads.append(encoder["pin_b"])
+        resolutions.append(encoder.get("resolution", None))
+
+    config_h_lines.append(f'#ifndef ENCODERS_PAD_A{postfix}')
+    config_h_lines.append(f'#   define ENCODERS_PAD_A{postfix} {{ { ", ".join(a_pads) } }}')
+    config_h_lines.append(f'#endif // ENCODERS_PAD_A{postfix}')
+
+    config_h_lines.append(f'#ifndef ENCODERS_PAD_B{postfix}')
+    config_h_lines.append(f'#   define ENCODERS_PAD_B{postfix} {{ { ", ".join(b_pads) } }}')
+    config_h_lines.append(f'#endif // ENCODERS_PAD_B{postfix}')
+
+    if None in resolutions:
+        cli.log.debug("Unable to generate ENCODER_RESOLUTION configuration")
+    elif len(set(resolutions)) == 1:
+        config_h_lines.append(f'#ifndef ENCODER_RESOLUTION{postfix}')
+        config_h_lines.append(f'#   define ENCODER_RESOLUTION{postfix} { resolutions[0] }')
+        config_h_lines.append(f'#endif // ENCODER_RESOLUTION{postfix}')
+    else:
+        config_h_lines.append(f'#ifndef ENCODER_RESOLUTIONS{postfix}')
+        config_h_lines.append(f'#   define ENCODER_RESOLUTIONS{postfix} {{ { ", ".join(map(str,resolutions)) } }}')
+        config_h_lines.append(f'#endif // ENCODER_RESOLUTIONS{postfix}')
 
 
 def generate_split_config(kb_info_json, config_h_lines):
@@ -168,6 +203,9 @@ def generate_split_config(kb_info_json, config_h_lines):
     if 'right' in kb_info_json['split'].get('matrix_pins', {}):
         config_h_lines.append(matrix_pins(kb_info_json['split']['matrix_pins']['right'], '_RIGHT'))
 
+    if 'right' in kb_info_json['split'].get('encoder', {}):
+        generate_encoder_config(kb_info_json['split']['encoder']['right'], config_h_lines, '_RIGHT')
+
 
 @cli.argument('-o', '--output', arg_only=True, type=normpath, help='File to write to')
 @cli.argument('-q', '--quiet', arg_only=True, action='store_true', help="Quiet mode, only output error messages")
@@ -192,6 +230,9 @@ def generate_config_h(cli):
 
     if 'matrix_pins' in kb_info_json:
         config_h_lines.append(matrix_pins(kb_info_json['matrix_pins']))
+
+    if 'encoder' in kb_info_json:
+        generate_encoder_config(kb_info_json['encoder'], config_h_lines)
 
     if 'split' in kb_info_json:
         generate_split_config(kb_info_json, config_h_lines)
